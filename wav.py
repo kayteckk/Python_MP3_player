@@ -42,7 +42,7 @@ class AudioPlayerApp:
         if self.pause:
             pygame.mixer.music.unpause()
             self.pause = False 
-            return 
+            return
         try:
             self.selected_song = self.selected_item(self.next_song_flag)
             pygame.mixer.music.load(self.selected_song)
@@ -71,6 +71,9 @@ class AudioPlayerApp:
         if file:
             self.selected_song = file.name
             self.Lb1.insert(self.Lb1.size() + 1, self.selected_song)
+            self.Lb1.selection_clear(0, "end")
+            self.Lb1.selection_set(self.Lb1.size(),"end")
+            self.Lb1.activate(self.Lb1.size())
             self.update_scale_info()
 
     def selected_item(self, flag):
