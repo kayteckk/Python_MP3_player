@@ -8,7 +8,7 @@ class AudioPlayerApp:
         self.root.geometry("900x500")
         self.frm = ttk.Frame(root, padding=10, height=500, width=500)
         self.frm.grid()
-
+        #self.Scale.bind("<Motion>", self.on_scale_move)
         self.selected_song = None
         self.next_song_flag = False
         self.pause = False
@@ -25,9 +25,9 @@ class AudioPlayerApp:
         ttk.Button(self.frm, text="Previous").grid(column=6, row=0)
         ttk.Button(self.frm, text="+sound", command=self.volume_up).grid(column=7, row=0)
         ttk.Button(self.frm, text="-sound", command=self.volume_down).grid(column=8, row=0)
-
         self.Scale = ttk.Scale(self.frm, from_=0, to=100, orient='horizontal')
         self.Scale.grid(column=3, row=11, columnspan=3, sticky='nswe')
+        self.Scale.bind("<ButtonRelease>", self.on_scale_move)
         self.starttime_label = ttk.Label(self.frm, text="00:00")
         self.starttime_label.grid(column=2, row=11)
         self.endtime_label = ttk.Label(self.frm, text="00:00")
@@ -36,7 +36,7 @@ class AudioPlayerApp:
         self.Lb1 = Listbox(self.frm)
         self.Lb1.grid(column=0, columnspan=10, rowspan=10, padx=5, pady=5, sticky='nswe', ipady=25, row=1)
 
-        self.update_scale_info()
+        #self.update_scale_info()
 
     def play(self):
         if self.pause:
@@ -99,16 +99,28 @@ class AudioPlayerApp:
     def update_scale_info(self):
         if self.selected_song:
             total_time_seconds = pygame.mixer.Sound(self.selected_song).get_length()
+            slider_value_total = total_time_seconds
             audio_length_minutes = total_time_seconds // 60
             total_time_seconds %= 60
             current_time_seconds = (pygame.mixer.music.get_pos() + 1) / 1000
+            slider_current_time_seconds = current_time_seconds
             current_time_minutes = current_time_seconds // 60
             current_time_seconds %= 60
-            print(int(current_time_minutes), int(current_time_seconds))
             self.starttime_label.config(text=f"{int(current_time_minutes):02d}:{int(current_time_seconds):02d}")
             self.endtime_label.config(text=f"{int(audio_length_minutes):02d}:{int(total_time_seconds):02d}")
-
+            self.Scale.config(from_=0,to=int(slider_value_total))
+            self.Scale.set(int(slider_current_time_seconds))
+                
         self.root.after(1000, self.update_scale_info)
+
+    def on_scale_move(self, event):
+        if self.selected_song:
+            total_time_seconds = pygame.mixer.Sound(self.selected_song).get_length()
+            slider_value_total = total_time_seconds
+            current_time_seconds = (self.Scale.get() / 100) * slider_value_total
+            pygame.mixer.music.rewind()
+            pygame.mixer.music.play(0, start=int(current_time_seconds))
+
 
 root = tk.Tk()
 app = AudioPlayerApp(root)
