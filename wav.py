@@ -14,7 +14,7 @@ class AudioPlayerApp:
         self.pause = False
         pygame.mixer.init()
         self.create_widgets()
-
+        
     def create_widgets(self):
         ttk.Label(self.frm, text="Audio Player").grid(column=0, row=0)
         ttk.Button(self.frm, text="Quit", command=self.root.destroy).grid(column=1, row=0)
@@ -75,6 +75,7 @@ class AudioPlayerApp:
             self.Lb1.selection_set(self.Lb1.size(),"end")
             self.Lb1.activate(self.Lb1.size())
             self.update_scale_info()
+            
 
     def selected_item(self, flag):
         if flag:
@@ -100,9 +101,10 @@ class AudioPlayerApp:
             total_time_seconds = pygame.mixer.Sound(self.selected_song).get_length()
             audio_length_minutes = total_time_seconds // 60
             total_time_seconds %= 60
-            current_time_seconds = pygame.mixer.music.get_pos() / 1000
+            current_time_seconds = (pygame.mixer.music.get_pos() + 1) / 1000
             current_time_minutes = current_time_seconds // 60
             current_time_seconds %= 60
+            print(int(current_time_minutes), int(current_time_seconds))
             self.starttime_label.config(text=f"{int(current_time_minutes):02d}:{int(current_time_seconds):02d}")
             self.endtime_label.config(text=f"{int(audio_length_minutes):02d}:{int(total_time_seconds):02d}")
 
