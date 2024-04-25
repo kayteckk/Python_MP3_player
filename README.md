@@ -1,11 +1,12 @@
-# Python WAV Player
- A simple python WAV player with GUI in tkinter and pygame
+# Python MP3 Player
+ A simple Python MP3 player with GUI using PyQt5
+
+Completely redesigned the app and changed tkinter and pygame into PyQt5.
+
 
 Changes to be made:
-1. Slider should update each second as the label does.
-2. previous song is not implemented.
-3. DB to be made using sqlite to preserve imported tracks.
-4. ~~Auto-selection of the first imported track to be done.~~
-5. ~~After the import slider label says -1:59 instead of 00:00. Need to fix.~~
+1. For now if we manipulate the volume slider for some reason until we stop moving it and unpress it the timeline slider moves in random direction (comes back to normal after lifting the volume slider. Just a cosmetical issue)
+2. Implement a smooth slider
+3. Remove selected song from the playlist
+4. Add a sqlite DB to preserve songs and paths.
 
-In the future the player should work with other filetypes than WAV (current issues with libraries and improper conversion leading to time discrepancies). 
