@@ -1,7 +1,14 @@
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QListWidget
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QListWidget, QMessageBox
 from PyQt5.QtCore import Qt, QUrl, QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QMediaContent
 import sys
+import sqlite3
+
+
+con = sqlite3.connect("song_list.db")
+cur = con.cursor()
+cur.execute("CREATE TABLE if not exists songs_list(path,name);")
+
 
 class AudioPlayerApp(QWidget):
     def __init__(self):
@@ -15,6 +22,8 @@ class AudioPlayerApp(QWidget):
         self.is_slider_pressed = False 
         self.global_volume = 10
         self.player.positionChanged.connect(self.update_position)
+        self.load_songs_to_list_from_db()
+
     def create_widgets(self):
         layout = QVBoxLayout()
 
@@ -36,6 +45,10 @@ class AudioPlayerApp(QWidget):
         previous_button = QPushButton("Previous")
         previous_button.clicked.connect(self.previous_song)
         control_layout.addWidget(previous_button)
+
+        remove_button = QPushButton("Remove")
+        remove_button.clicked.connect(self.remove_song_from_list_and_db)
+        control_layout.addWidget(remove_button)
         
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
@@ -49,8 +62,6 @@ class AudioPlayerApp(QWidget):
         self.scale.setRange(0, 100)
         self.scale.sliderPressed.connect(self.slider_pressed)
         self.scale.sliderReleased.connect(self.slider_released)
-        #self.scale.setTickPosition(QSlider.TicksAbove)
-        #self.scale.setTickInterval(50)
         layout.addWidget(self.scale)
 
         time_layout = QHBoxLayout()
@@ -65,6 +76,8 @@ class AudioPlayerApp(QWidget):
         self.song_list.setSelectionMode(QListWidget.SingleSelection)
         self.song_list.itemClicked.connect(self.play_selected_song)
         layout.addWidget(self.song_list)
+
+
         self.setLayout(layout)
 
     def toggle_play(self):
@@ -81,13 +94,41 @@ class AudioPlayerApp(QWidget):
         if file_dialog.exec_():
             file_paths = file_dialog.selectedFiles()
             for file_path in file_paths:
-                self.song_list.addItem(file_path)
                 url = QUrl.fromLocalFile(file_path)
+                song_name = url.fileName()
+                cur.execute("SELECT * FROM songs_list WHERE name = ?", (song_name,))
+                existing_record = cur.fetchone()
+                if existing_record:
+                    msg_box = QMessageBox()
+                    msg_box.setIcon(QMessageBox.Warning)
+                    msg_box.setText(f"This song: {song_name} already exists in Database.")
+                    msg_box.setStandardButtons(QMessageBox.Ok)
+                    retval = msg_box.exec_()
+                    continue
+                self.song_list.addItem(song_name)
                 media = QMediaContent(url)
                 self.playlist.addMedia(media)
+                cur.execute("INSERT INTO songs_list (path, name) VALUES (?, ?)", (file_path, song_name))
             self.playlist.setCurrentIndex(0) 
             self.player.setPlaylist(self.playlist)
             self.player.mediaStatusChanged.connect(self.check_media_status)
+            con.commit()
+
+    def load_songs_to_list_from_db(self):
+        cur.execute("SELECT * FROM songs_list")
+        records = cur.fetchall()
+        for row in records:
+            url = QUrl.fromLocalFile(row[0])
+            media = QMediaContent(url)
+            self.playlist.addMedia(media)
+            self.song_list.addItem(row[1])
+
+    def remove_song_from_list_and_db(self):
+        row = self.song_list.currentRow()
+        item_to_remove = self.song_list.item(row).text()
+        self.song_list.takeItem(row)
+        cur.execute("DELETE FROM songs_list WHERE name=?",(item_to_remove,))
+        con.commit()
 
     def check_media_status(self, status):
         if status == QMediaPlayer.LoadedMedia:
@@ -114,24 +155,29 @@ class AudioPlayerApp(QWidget):
         next_index = self.playlist.nextIndex()
         if next_index != -1:
             self.playlist.setCurrentIndex(next_index)
+            self.player.setVolume(self.global_volume)
             self.player.play()
+            self.song_list.setCurrentRow(next_index)
 
     def previous_song(self):
         prev_index = self.playlist.previousIndex()
         if prev_index != -1:
             self.playlist.setCurrentIndex(prev_index)
+            self.player.setVolume(self.global_volume)
             self.player.play()
+            self.song_list.setCurrentRow(prev_index)
 
     def set_volume(self):
         volume = self.volume_slider.value()
         self.player.setVolume(volume)
+        self.global_volume = volume
 
     def slider_pressed(self):
         self.is_slider_pressed = True
 
     def slider_released(self):
         self.is_slider_pressed = False
-        if not self.volume_slider.isSliderDown():  # Sprawdzamy, czy suwak głośności jest przesuwany
+        if not self.volume_slider.isSliderDown():
             self.set_position()
 
     def set_position(self):
@@ -152,7 +198,7 @@ class AudioPlayerApp(QWidget):
             position_seconds = position / 1000
             minutes, seconds = divmod(position_seconds, 60)
             self.starttime_label.setText("{:02}:{:02}".format(int(minutes), int(seconds)))
-            self.scale.setValue(int(position_seconds))  # Ustawiamy wartość suwaka w sekundach
+            self.scale.setValue(int(position_seconds))
             self.update_time_labels()
 
 
@@ -160,7 +206,4 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     player = AudioPlayerApp()
     player.show()
-    # timer = QTimer()
-    # timer.timeout.connect(player.update_position)
-    # timer.start(1000)
     sys.exit(app.exec_())
