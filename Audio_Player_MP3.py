@@ -4,11 +4,9 @@ from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QMediaContent
 import sys
 import sqlite3
 
-
 con = sqlite3.connect("song_list.db")
 cur = con.cursor()
 cur.execute("CREATE TABLE if not exists songs_list(path,name);")
-
 
 class AudioPlayerApp(QWidget):
     def __init__(self):
@@ -22,7 +20,11 @@ class AudioPlayerApp(QWidget):
         self.is_slider_pressed = False 
         self.global_volume = 10
         self.player.positionChanged.connect(self.update_position)
+        self.player.durationChanged.connect(self.set_duration_range)
         self.load_songs_to_list_from_db()
+        self.timer = QTimer(self)
+        self.timer.setInterval(50)
+        self.timer.timeout.connect(self.update_slider_position)
 
     def create_widgets(self):
         layout = QVBoxLayout()
@@ -59,7 +61,7 @@ class AudioPlayerApp(QWidget):
         layout.addLayout(control_layout)
 
         self.scale = QSlider(Qt.Horizontal)
-        self.scale.setRange(0, 100)
+        self.scale.setRange(0, 100000)
         self.scale.sliderPressed.connect(self.slider_pressed)
         self.scale.sliderReleased.connect(self.slider_released)
         layout.addWidget(self.scale)
@@ -68,7 +70,7 @@ class AudioPlayerApp(QWidget):
         self.starttime_label = QLabel("00:00")
         time_layout.addWidget(self.starttime_label)
         time_layout.addStretch()
-        self.endtime_label = QLabel()
+        self.endtime_label = QLabel("00:00")
         time_layout.addWidget(self.endtime_label)
         layout.addLayout(time_layout)
 
@@ -77,14 +79,15 @@ class AudioPlayerApp(QWidget):
         self.song_list.itemClicked.connect(self.play_selected_song)
         layout.addWidget(self.song_list)
 
-
         self.setLayout(layout)
 
     def toggle_play(self):
         if self.player.state() == QMediaPlayer.PlayingState:
             self.player.pause()
+            self.timer.stop()
         else:
             self.player.play()
+            self.timer.start()
 
     def import_songs(self):
         file_dialog = QFileDialog()
@@ -127,7 +130,7 @@ class AudioPlayerApp(QWidget):
         row = self.song_list.currentRow()
         item_to_remove = self.song_list.item(row).text()
         self.song_list.takeItem(row)
-        cur.execute("DELETE FROM songs_list WHERE name=?",(item_to_remove,))
+        cur.execute("DELETE FROM songs_list WHERE name=?", (item_to_remove,))
         con.commit()
 
     def check_media_status(self, status):
@@ -137,9 +140,7 @@ class AudioPlayerApp(QWidget):
 
     def set_duration_range(self):
         duration = self.player.duration() / 1000
-        self.scale.setMaximum(int(duration))
-        self.scale.setRange(0, int(duration))
-        self.scale.setValue(0)
+        self.scale.setMaximum(int(self.player.duration()))
 
     def play_selected_song(self):
         selected_item = self.song_list.currentItem()
@@ -150,6 +151,8 @@ class AudioPlayerApp(QWidget):
             self.player.play()
             self.update_time_labels()
             self.play_button.setEnabled(True)
+            self.set_duration_range()
+            self.timer.start()
 
     def next_song(self):
         next_index = self.playlist.nextIndex()
@@ -158,6 +161,8 @@ class AudioPlayerApp(QWidget):
             self.player.setVolume(self.global_volume)
             self.player.play()
             self.song_list.setCurrentRow(next_index)
+            self.set_duration_range()
+            self.timer.start()
 
     def previous_song(self):
         prev_index = self.playlist.previousIndex()
@@ -166,6 +171,8 @@ class AudioPlayerApp(QWidget):
             self.player.setVolume(self.global_volume)
             self.player.play()
             self.song_list.setCurrentRow(prev_index)
+            self.set_duration_range()
+            self.timer.start()
 
     def set_volume(self):
         volume = self.volume_slider.value()
@@ -182,7 +189,7 @@ class AudioPlayerApp(QWidget):
 
     def set_position(self):
         if not self.is_slider_pressed:
-            position = self.scale.value() * 1000
+            position = self.scale.value()  
             self.player.setPosition(position)
 
     def update_time_labels(self):
@@ -198,9 +205,13 @@ class AudioPlayerApp(QWidget):
             position_seconds = position / 1000
             minutes, seconds = divmod(position_seconds, 60)
             self.starttime_label.setText("{:02}:{:02}".format(int(minutes), int(seconds)))
-            self.scale.setValue(int(position_seconds))
+            self.scale.setValue(position)
             self.update_time_labels()
 
+    def update_slider_position(self):
+        if not self.is_slider_pressed and self.player.state() == QMediaPlayer.PlayingState:
+            position = self.player.position()
+            self.scale.setValue(position)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
