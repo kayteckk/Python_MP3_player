@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QListWidget, QMessageBox
-from PyQt5.QtCore import Qt, QUrl, QTimer, pyqtSignal, QObject,QThread
+from PyQt5.QtCore import Qt, QUrl, QTimer, pyqtSignal, QObject,QThread,QEvent
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QMediaContent
 from pynput import keyboard
 import sys
@@ -8,29 +8,6 @@ import sqlite3
 con = sqlite3.connect("song_list.db")
 cur = con.cursor()
 cur.execute("CREATE TABLE if not exists songs_list(path,name);")
-
-
-class Worker(QObject):
-    play_pause = pyqtSignal()
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.listener = keyboard.Listener(on_press=self.on_press)
-        self.is_listening = False
-
-    def on_press(self, key):
-        if key == keyboard.Key.space:
-            self.play_pause.emit()
-
-    def start_listening(self):
-        print("Start")
-        self.is_listening = True
-        self.listener.start()
-
-    def stop_listening(self):
-        print("Stop")
-        self.is_listening = False
-        self.listener.stop()
 
 
 class AudioPlayerApp(QWidget):
@@ -50,12 +27,10 @@ class AudioPlayerApp(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(50)
         self.timer.timeout.connect(self.update_slider_position)
-        self.worker = Worker()
-        self.worker.play_pause.connect(self.toggle_play)
-        self.thread = QThread()
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.start_listening)
-        self.thread.start()
+        self.setFocusPolicy(Qt.ClickFocus)
+        self.installEventFilter(self)
+        self.song_list.installEventFilter(self)
+
 
     def create_widgets(self):
         layout = QVBoxLayout()
@@ -119,6 +94,14 @@ class AudioPlayerApp(QWidget):
         else:
             self.player.play()
             self.timer.start()
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Space:
+                self.toggle_play()
+                return True
+        return super().eventFilter(obj, event)
+
 
     def import_songs(self):
         file_dialog = QFileDialog()
@@ -243,16 +226,6 @@ class AudioPlayerApp(QWidget):
         if not self.is_slider_pressed and self.player.state() == QMediaPlayer.PlayingState:
             position = self.player.position()
             self.scale.setValue(position)
-
-    def focusInEvent(self, event):
-        super().focusInEvent(event)
-        print("focus in")
-        self.worker.start_listening()
-
-    def focusOutEvent(self, event):
-        super().focusOutEvent(event)
-        print("focus out")
-        self.worker.stop_listening()
 
 
 if __name__ == "__main__":
