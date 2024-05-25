@@ -1,12 +1,37 @@
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QListWidget, QMessageBox
-from PyQt5.QtCore import Qt, QUrl, QTimer
+from PyQt5.QtCore import Qt, QUrl, QTimer, pyqtSignal, QObject,QThread
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QMediaContent
+from pynput import keyboard
 import sys
 import sqlite3
 
 con = sqlite3.connect("song_list.db")
 cur = con.cursor()
 cur.execute("CREATE TABLE if not exists songs_list(path,name);")
+
+
+class Worker(QObject):
+    play_pause = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.listener = keyboard.Listener(on_press=self.on_press)
+        self.is_listening = False
+
+    def on_press(self, key):
+        if key == keyboard.Key.space:
+            self.play_pause.emit()
+
+    def start_listening(self):
+        print("Start")
+        self.is_listening = True
+        self.listener.start()
+
+    def stop_listening(self):
+        print("Stop")
+        self.is_listening = False
+        self.listener.stop()
+
 
 class AudioPlayerApp(QWidget):
     def __init__(self):
@@ -17,7 +42,7 @@ class AudioPlayerApp(QWidget):
         self.playlist = QMediaPlaylist()
         self.player.setPlaylist(self.playlist)
         self.create_widgets()
-        self.is_slider_pressed = False 
+        self.is_slider_pressed = False
         self.global_volume = 10
         self.player.positionChanged.connect(self.update_position)
         self.player.durationChanged.connect(self.set_duration_range)
@@ -25,6 +50,12 @@ class AudioPlayerApp(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(50)
         self.timer.timeout.connect(self.update_slider_position)
+        self.worker = Worker()
+        self.worker.play_pause.connect(self.toggle_play)
+        self.thread = QThread()
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.start_listening)
+        self.thread.start()
 
     def create_widgets(self):
         layout = QVBoxLayout()
@@ -51,13 +82,13 @@ class AudioPlayerApp(QWidget):
         remove_button = QPushButton("Remove")
         remove_button.clicked.connect(self.remove_song_from_list_and_db)
         control_layout.addWidget(remove_button)
-        
+
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(10)
         self.volume_slider.sliderReleased.connect(self.set_volume)
         control_layout.addWidget(self.volume_slider)
-        
+
         layout.addLayout(control_layout)
 
         self.scale = QSlider(Qt.Horizontal)
@@ -112,7 +143,7 @@ class AudioPlayerApp(QWidget):
                 media = QMediaContent(url)
                 self.playlist.addMedia(media)
                 cur.execute("INSERT INTO songs_list (path, name) VALUES (?, ?)", (file_path, song_name))
-            self.playlist.setCurrentIndex(0) 
+            self.playlist.setCurrentIndex(0)
             self.player.setPlaylist(self.playlist)
             self.player.mediaStatusChanged.connect(self.check_media_status)
             con.commit()
@@ -147,7 +178,7 @@ class AudioPlayerApp(QWidget):
         if selected_item:
             index = self.song_list.row(selected_item)
             self.playlist.setCurrentIndex(index)
-            self.player.setVolume(self.global_volume) 
+            self.player.setVolume(self.global_volume)
             self.player.play()
             self.update_time_labels()
             self.play_button.setEnabled(True)
@@ -189,7 +220,7 @@ class AudioPlayerApp(QWidget):
 
     def set_position(self):
         if not self.is_slider_pressed:
-            position = self.scale.value()  
+            position = self.scale.value()
             self.player.setPosition(position)
 
     def update_time_labels(self):
@@ -213,8 +244,20 @@ class AudioPlayerApp(QWidget):
             position = self.player.position()
             self.scale.setValue(position)
 
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        print("focus in")
+        self.worker.start_listening()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        print("focus out")
+        self.worker.stop_listening()
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     player = AudioPlayerApp()
     player.show()
     sys.exit(app.exec_())
+
