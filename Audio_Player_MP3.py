@@ -98,6 +98,10 @@ class AudioPlayerApp(QWidget):
     def eventFilter(self, obj, event):
         if event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Space:
+                if self.player.state() == QMediaPlayer.PlayingState:
+                    self.play_button.setText("Pause")
+                else:
+                    self.play_button.setText("Play")
                 self.toggle_play()
                 return True
         return super().eventFilter(obj, event)
@@ -146,6 +150,21 @@ class AudioPlayerApp(QWidget):
         self.song_list.takeItem(row)
         cur.execute("DELETE FROM songs_list WHERE name=?", (item_to_remove,))
         con.commit()
+        self.player.stop()
+        self.scale.setValue(0)
+        self.endtime_label.setText("00:00")
+        self.starttime_label.setText("00:00")
+        self.playlist.removeMedia(row)
+        if self.player.state() == QMediaPlayer.PlayingState:
+            self.player.stop()  
+        if not self.playlist.isEmpty():
+            self.player.setPlaylist(self.playlist)
+        if self.playlist.isEmpty():
+            self.play_button.setDisabled(True)
+
+
+
+
 
     def check_media_status(self, status):
         if status == QMediaPlayer.LoadedMedia:
@@ -167,6 +186,7 @@ class AudioPlayerApp(QWidget):
             self.play_button.setEnabled(True)
             self.set_duration_range()
             self.timer.start()
+
 
     def next_song(self):
         next_index = self.playlist.nextIndex()
