@@ -1,14 +1,13 @@
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QListWidget, QMessageBox
-from PyQt5.QtCore import Qt, QUrl, QTimer, pyqtSignal, QObject,QThread,QEvent
+from PyQt5.QtCore import Qt, QUrl, QTimer, QEvent
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QMediaContent
-from pynput import keyboard
 import sys
 import sqlite3
+import random
 
 con = sqlite3.connect("song_list.db")
 cur = con.cursor()
 cur.execute("CREATE TABLE if not exists songs_list(path,name);")
-
 
 class AudioPlayerApp(QWidget):
     def __init__(self):
@@ -21,6 +20,7 @@ class AudioPlayerApp(QWidget):
         self.create_widgets()
         self.is_slider_pressed = False
         self.global_volume = 10
+        self.shuffle_flag = False
         self.player.positionChanged.connect(self.update_position)
         self.player.durationChanged.connect(self.set_duration_range)
         self.load_songs_to_list_from_db()
@@ -30,7 +30,7 @@ class AudioPlayerApp(QWidget):
         self.setFocusPolicy(Qt.ClickFocus)
         self.installEventFilter(self)
         self.song_list.installEventFilter(self)
-
+        self.history_stack = []
 
     def create_widgets(self):
         layout = QVBoxLayout()
@@ -54,9 +54,14 @@ class AudioPlayerApp(QWidget):
         previous_button.clicked.connect(self.previous_song)
         control_layout.addWidget(previous_button)
 
-        remove_button = QPushButton("Remove")
-        remove_button.clicked.connect(self.remove_song_from_list_and_db)
-        control_layout.addWidget(remove_button)
+        self.remove_button = QPushButton("Remove")
+        self.remove_button.setDisabled(True)
+        self.remove_button.clicked.connect(self.remove_song_from_list_and_db)
+        control_layout.addWidget(self.remove_button)
+
+        self.shuffle_button = QPushButton("Shuffle=OFF")
+        self.shuffle_button.clicked.connect(self.toggle_shuffle)
+        control_layout.addWidget(self.shuffle_button)
 
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
@@ -106,7 +111,6 @@ class AudioPlayerApp(QWidget):
                 return True
         return super().eventFilter(obj, event)
 
-
     def import_songs(self):
         file_dialog = QFileDialog()
         file_dialog.setNameFilter("MP3 Files (*.mp3)")
@@ -129,10 +133,9 @@ class AudioPlayerApp(QWidget):
                 self.song_list.addItem(song_name)
                 media = QMediaContent(url)
                 self.playlist.addMedia(media)
-                cur.execute("INSERT INTO songs_list (path, name) VALUES (?, ?)", (file_path, song_name))
-            self.playlist.setCurrentIndex(0)
-            self.player.setPlaylist(self.playlist)
-            self.player.mediaStatusChanged.connect(self.check_media_status)
+                cur.execute("INSERT INTO songs_list (path,name) VALUES (?, ?)", (file_path, song_name))
+            self.remove_button.setEnabled(True)
+            self.play_button.setEnabled(True)
             con.commit()
 
     def load_songs_to_list_from_db(self):
@@ -143,6 +146,9 @@ class AudioPlayerApp(QWidget):
             media = QMediaContent(url)
             self.playlist.addMedia(media)
             self.song_list.addItem(row[1])
+        if self.song_list.count() > 0:
+            self.play_button.setEnabled(True)
+            self.remove_button.setEnabled(True)
 
     def remove_song_from_list_and_db(self):
         row = self.song_list.currentRow()
@@ -156,15 +162,12 @@ class AudioPlayerApp(QWidget):
         self.starttime_label.setText("00:00")
         self.playlist.removeMedia(row)
         if self.player.state() == QMediaPlayer.PlayingState:
-            self.player.stop()  
+            self.player.stop()
         if not self.playlist.isEmpty():
             self.player.setPlaylist(self.playlist)
         if self.playlist.isEmpty():
             self.play_button.setDisabled(True)
-
-
-
-
+            self.remove_button.setDisabled(True)
 
     def check_media_status(self, status):
         if status == QMediaPlayer.LoadedMedia:
@@ -187,9 +190,13 @@ class AudioPlayerApp(QWidget):
             self.set_duration_range()
             self.timer.start()
 
-
     def next_song(self):
-        next_index = self.playlist.nextIndex()
+        if self.shuffle_flag:
+            next_index = self.playlist.currentIndex()
+            while next_index == self.playlist.currentIndex():
+                next_index = random.randint(0, self.playlist.mediaCount() - 1)
+        else:
+            next_index = self.playlist.nextIndex()
         if next_index != -1:
             self.playlist.setCurrentIndex(next_index)
             self.player.setVolume(self.global_volume)
@@ -199,14 +206,18 @@ class AudioPlayerApp(QWidget):
             self.timer.start()
 
     def previous_song(self):
-        prev_index = self.playlist.previousIndex()
-        if prev_index != -1:
-            self.playlist.setCurrentIndex(prev_index)
+        if self.history_stack:
+            prev_song = self.history_stack.pop()
+            self.playlist.setCurrentIndex(prev_song)
             self.player.setVolume(self.global_volume)
             self.player.play()
-            self.song_list.setCurrentRow(prev_index)
+            self.song_list.setCurrentRow(prev_song)
             self.set_duration_range()
             self.timer.start()
+
+    def toggle_shuffle(self):
+        self.shuffle_flag = not self.shuffle_flag
+        self.shuffle_button.setText("Shuffle=ON" if self.shuffle_flag else "Shuffle=OFF")
 
     def set_volume(self):
         volume = self.volume_slider.value()
@@ -218,8 +229,7 @@ class AudioPlayerApp(QWidget):
 
     def slider_released(self):
         self.is_slider_pressed = False
-        if not self.volume_slider.isSliderDown():
-            self.set_position()
+        self.set_position()
 
     def set_position(self):
         if not self.is_slider_pressed:
@@ -246,7 +256,6 @@ class AudioPlayerApp(QWidget):
         if not self.is_slider_pressed and self.player.state() == QMediaPlayer.PlayingState:
             position = self.player.position()
             self.scale.setValue(position)
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
